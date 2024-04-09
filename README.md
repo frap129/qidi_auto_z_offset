@@ -8,7 +8,7 @@ ln -s <the full path to>/auto_z_offset.py <the full path to>/klipper/klippy/extr
 ```
 
 ### Command Reference
-**AUTO_Z_OFFSET**: `AUTO_Z_OFFSET` "probes" the bed
+**AUTO_Z_CALIBRATE**: `AUTO_Z_CALIBRATE` "probes" the bed to measure z-offset
 
 ### Config Reference
 ```
