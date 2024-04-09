@@ -96,6 +96,10 @@ class AutoZOffsetEndstopWrapper:
         self.multi_probe_begin = self.probe_wrapper.multi_probe_begin
         self.multi_probe_end = self.probe_wrapper.multi_probe_end
 
+    def probing_move(self, pos, speed):
+        phoming = self.printer.lookup_object("homing")
+        return phoming.probing_move(self, pos, speed)
+
     def probe_prepare(self, hmove):
         toolhead = self.printer.lookup_object("toolhead")
         self.probe_wrapper.probe_prepare(hmove)
