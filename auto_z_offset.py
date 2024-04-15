@@ -6,6 +6,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+from operator import neg
 
 from . import probe
 
@@ -74,9 +75,11 @@ class AutoZOffsetProbe(probe.PrinterProbe):
     def cmd_AUTO_Z_CALIBRATE(self, gcmd):
         pos = self.run_probe(gcmd)
         gcmd.respond_info("Result is z=%.6f" % (pos[2],))
-        self.last_z_result = pos[2] + self.z_offset
-        self.gcode.run_script_from_command(
-            "SET_GCODE_OFFSET Z=%.6f" % (self.last_z_result,)
+        toolhead = self.printer.lookup_object("toolhead")
+        toolhead.get_last_move_time()
+        curpos = toolhead.get_position()
+        toolhead.set_position(
+            [curpos[0], curpos[1], neg(self.z_offset), curpos[3]], homing_axes=(0, 1, 2)
         )
 
 
