@@ -82,13 +82,15 @@ class AutoZOffsetProbe(probe.PrinterProbe):
             [curpos[0], curpos[1], neg(self.z_offset), curpos[3]], homing_axes=(0, 1, 2)
         )
 
-
 class AutoZOffsetEndstopWrapper:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object("gcode")
         self.probe_accel = config.getfloat("probe_accel", 0.0, minval=0.0)
         self.probe_wrapper = probe.ProbeEndstopWrapper(config)
+        # Setup prepare_gcode
+        gcode_macro = self.printer.load_object(config, 'gcode_macro')
+        self.prepare_gcode = gcode_macro.load_template(config, 'prepare_gcode')
         # Wrappers
         self.get_mcu = self.probe_wrapper.get_mcu
         self.add_stepper = self.probe_wrapper.add_stepper
@@ -96,8 +98,10 @@ class AutoZOffsetEndstopWrapper:
         self.home_start = self.probe_wrapper.home_start
         self.home_wait = self.probe_wrapper.home_wait
         self.query_endstop = self.probe_wrapper.query_endstop
-        self.multi_probe_begin = self.probe_wrapper.multi_probe_begin
         self.multi_probe_end = self.probe_wrapper.multi_probe_end
+
+    def multi_probe_begin(self):
+        self.gcode.run_script_from_command(self.prepare_gcode.render())
 
     def probing_move(self, pos, speed):
         phoming = self.printer.lookup_object("homing")
@@ -119,8 +123,6 @@ class AutoZOffsetEndstopWrapper:
 
 
 def load_config(config):
-    auto_z_offset = AutoZOffsetEndstopWrapper(config)
-    config.get_printer().add_object(
-        "auto_z_offset", AutoZOffsetProbe(config, auto_z_offset)
-    )
+    auto_z_offset = AutoZOffsetProbe(config, AutoZOffsetEndstopWrapper(config))
+    config.get_printer().add_object("auto_z_offset", auto_z_offset)
     return auto_z_offset
