@@ -106,14 +106,14 @@ class AutoZOffsetEndstopWrapper:
     def probe_prepare(self, hmove):
         toolhead = self.printer.lookup_object("toolhead")
         self.probe_wrapper.probe_prepare(hmove)
-        if self.probe_accel:
+        if self.probe_accel > 0.0:
             systime = self.printer.get_reactor().monotonic()
             toolhead_info = toolhead.get_status(systime)
             self.old_max_accel = toolhead_info["max_accel"]
             self.gcode.run_script_from_command("M204 S%.3f" % (self.probe_accel,))
 
     def probe_finish(self, hmove):
-        if self.probe_accel:
+        if self.probe_accel > 0.0:
             self.gcode.run_script_from_command("M204 S%.3f" % (self.old_max_accel,))
         self.probe_wrapper.probe_finish(hmove)
 
