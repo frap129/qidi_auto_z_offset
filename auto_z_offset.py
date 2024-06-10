@@ -18,9 +18,7 @@ class AutoZOffsetProbe(probe.PrinterProbe):
         self.mcu_probe = mcu_probe
         self.speed = config.getfloat("speed", 5.0, above=0.0)
         self.lift_speed = config.getfloat("lift_speed", self.speed, above=0.0)
-        self.x_offset = config.getfloat("x_offset", 0.0)
-        self.y_offset = config.getfloat("y_offset", 0.0)
-        self.z_offset = config.getfloat("z_offset")
+        self.z_offset = config.getfloat("z_offset", minval=0.0)
         self.probe_calibrate_z = 0.0
         self.multi_probe_pending = False
         self.last_state = False
@@ -62,25 +60,49 @@ class AutoZOffsetProbe(probe.PrinterProbe):
         self.printer.register_event_handler(
             "gcode:command_error", self._handle_command_error
         )
-        # Register PROBE/QUERY_PROBE commands
+        # Register commands
         self.gcode = self.printer.lookup_object("gcode")
         self.gcode.register_command(
-            "AUTO_Z_CALIBRATE",
-            self.cmd_AUTO_Z_CALIBRATE,
-            desc=self.cmd_AUTO_Z_CALIBRATE_help,
+            "AUTO_Z_PROBE",
+            self.cmd_AUTO_Z_PROBE,
+            desc=self.cmd_AUTO_Z_PROBE_help,
+        )
+        self.gcode.register_command(
+            "AUTO_Z_OFFSET",
+            self.cmd_AUTO_Z_OFFSET,
+            desc=self.cmd_AUTO_Z_OFFSET_help,
         )
 
-    cmd_AUTO_Z_CALIBRATE_help = "Probe Z-height at current XY position"
+    cmd_AUTO_Z_PROBE_help = "Probe Z-height at current XY position"
 
-    def cmd_AUTO_Z_CALIBRATE(self, gcmd):
+    def cmd_AUTO_Z_PROBE(self, gcmd):
         pos = self.run_probe(gcmd)
         gcmd.respond_info("Result is z=%.6f" % (pos[2],))
+        self.last_z_result = pos[2]
+
+    cmd_AUTO_Z_OFFSET_help = (
+        "Calculate approximate z-offset using the probe and bed sensors"
+    )
+
+    def cmd_AUTO_Z_OFFSET(self, gcmd):
+        # Calculate z-offset
+        self.cmd_AUTO_Z_PROBE(gcmd)
+        gcmd.respond_info("Bed sensor report z=%.6f" % self.last_z_result)
+        self.gcode.run_script_from_command("G0 Z%f" % self.sample_retract_dist)
+        probe = self.printer.lookup_object("probe")
+        probe_pos = probe.run_probe(gcmd)
+        gcmd.respond_info("Probe report z=%.6f" % probe_pos[2])
+        offset = self.last_z_result + probe_pos[2] + self.z_offset
+        gcmd.respond_info("Calculated Z-Offset of %.6f" % offset)
+
+        # Apply z-offset
         toolhead = self.printer.lookup_object("toolhead")
         toolhead.get_last_move_time()
         curpos = toolhead.get_position()
         toolhead.set_position(
-            [curpos[0], curpos[1], neg(self.z_offset), curpos[3]], homing_axes=(0, 1, 2)
+            [curpos[0], curpos[1], neg(offset), curpos[3]], homing_axes=(0, 1, 2)
         )
+
 
 class AutoZOffsetEndstopWrapper:
     def __init__(self, config):
@@ -89,8 +111,8 @@ class AutoZOffsetEndstopWrapper:
         self.probe_accel = config.getfloat("probe_accel", 0.0, minval=0.0)
         self.probe_wrapper = probe.ProbeEndstopWrapper(config)
         # Setup prepare_gcode
-        gcode_macro = self.printer.load_object(config, 'gcode_macro')
-        self.prepare_gcode = gcode_macro.load_template(config, 'prepare_gcode')
+        gcode_macro = self.printer.load_object(config, "gcode_macro")
+        self.prepare_gcode = gcode_macro.load_template(config, "prepare_gcode")
         # Wrappers
         self.get_mcu = self.probe_wrapper.get_mcu
         self.add_stepper = self.probe_wrapper.add_stepper
