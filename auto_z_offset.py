@@ -22,6 +22,7 @@ class AutoZOffsetProbe(probe.PrinterProbe):
         self.probe_hop = config.getfloat("probe_hop", 5.0, minval=4.0)
         self.probe_accel = config.getfloat("probe_accel", 0.0, minval=0.0)
         self.offset_samples = config.getint("offset_samples", 3, minval=1)
+        self.calibrated_z_offset = config.getfloat("calibrated_z_offset", 0.0)
         self.probe_calibrate_z = 0.0
         self.multi_probe_pending = False
         self.last_state = False
@@ -75,7 +76,6 @@ class AutoZOffsetProbe(probe.PrinterProbe):
             self.cmd_AUTO_Z_HOME_Z,
             desc=self.cmd_AUTO_Z_HOME_Z_help,
         )
-
         self.gcode.register_command(
             "AUTO_Z_MEASURE_OFFSET",
             self.cmd_AUTO_Z_MEASURE_OFFSET,
@@ -135,10 +135,21 @@ class AutoZOffsetProbe(probe.PrinterProbe):
         offset_total = 0.0
         for _ in range(self.offset_samples):
             offset_total += self.cmd_AUTO_Z_MEASURE_OFFSET(gcmd)
-        avg_offset = offset_total / self.offset_samples
-        gcmd.respond_info("Calibrated Z-Offset of %.6f" % avg_offset)
+        self.calibrated_z_offset = offset_total / self.offset_samples
+        gcmd.respond_info("Calibrated Z-Offset of %.6f" % self.calibrated_z_offset)
         self.gcode.run_script_from_command(
-            "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(avg_offset)
+            "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(self.calibrated_z_offset)
+        )
+
+        configfile = self.printer.lookup_object("configfile")
+        configfile.set(
+            self.name, "calibrated_z_offset", "%.6f" % self.calibrated_z_offset
+        )
+        gcmd.respond_info(
+            "%s: calibrated_z_offset: %.6f\n"
+            "The SAVE_CONFIG command will update the printer config file\n"
+            "with the above and restart the printer."
+            % (self.name, self.calibrated_z_offset)
         )
 
     def lift_probe(self):
