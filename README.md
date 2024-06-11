@@ -17,6 +17,8 @@ ln -s ~/qidi_auto_z_offset/auto_z_offset.py ~/klipper/klippy/extras/auto_z_offse
 [auto_z_offset]
 pin:
 #   Pin connected to the Auto Z Offset output pin. This parameter is required.
+z_offset: 0.0
+#   Unused in actual code, but required because this is technically probe.
 #probe_accel:
 #   If set, limits the acceleration of the probing moves (in mm/sec^2).
 #   A sudden large acceleration at the beginning of the probing move may
