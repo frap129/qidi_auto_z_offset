@@ -99,6 +99,7 @@ class AutoZOffsetProbe(probe.PrinterProbe):
     cmd_AUTO_Z_PROBE_help = "Probe Z-height at current XY position"
 
     def cmd_AUTO_Z_PROBE(self, gcmd):
+        self.gcode.run_script_from_command("G0 X120 Y120")
         pos = self.run_probe(gcmd)
         gcmd.respond_info("Result is z=%.6f" % (pos[2],))
         self.last_z_result = pos[2]
