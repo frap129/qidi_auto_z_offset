@@ -11,8 +11,7 @@ ln -s ~/qidi_auto_z_offset/auto_z_offset.py ~/klipper/klippy/extras/auto_z_offse
 
 ### Command Reference
 **AUTO_Z_PROBE**: `AUTO_Z_PROBE` works like the normal PROBE command, using the bed sensors instead.
-**AUTO_Z_OFFSET**: `AUTO_Z_OFFSET` uses the probe and the bed sensor to approximate the Z offset as `auto_z_probe_result + probe_result + z_offset` where `z_offset` is the fixed value set in the auto_z_offset config.
-
+**AUTO_Z_CALIBRATE**: `AUTO_Z_CALIBRATE` uses the bed sensor as a Z endstop, then probes with the inductive probe. Averages the values reported by each to find the approximate offset.
 ### Config Reference
 ```
 [auto_z_offset]
@@ -24,11 +23,18 @@ pin:
 #   cause spurious probe triggering, especially if the hotend is heavy.
 #   To prevent that, it may be necessary to reduce the acceleration of
 #   the probing moves via this parameter.
-z_offset:
-#   Offset to adjust the final z-offset value by after probing . Note that this
-#   is not the same as a traditional probe's z_offset.
+#endstop_positon:
+#   The z positon that triggering the bed sensors corresponds to.
+#   default is -0.1
+#probe_hop:
+#   The amount to hop between probing with bed sensors and probing with probe.
+#   default is 5.0, min is 4.0 to avoid triggering the probe early
+#offset_samples:
+#   The number of times to probe with bed sensors and inductive probe. Note,
+#   this is not the same as `samples`. 
+#   default is 3
 prepare_gcode:
-#   gcode script to run before probing with AUTO_Z. This is required, and an
+#   gcode script to run before probing with auto_z_offset. This is required, and an
 #   example script is provided below.
 #speed:
 #samples:
