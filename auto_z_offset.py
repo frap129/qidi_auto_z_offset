@@ -18,8 +18,9 @@ class AutoZOffsetProbe(probe.PrinterProbe):
         self.mcu_probe = mcu_probe
         self.speed = config.getfloat("speed", 5.0, above=0.0)
         self.lift_speed = config.getfloat("lift_speed", self.speed, above=0.0)
-        self.endstop_position = config.getfloat("endstop_position", -0.1)
+        self.z_offset = config.getfloat("z_offset", -0.1)
         self.probe_hop = config.getfloat("probe_hop", 5.0, minval=4.0)
+        self.probe_accel = config.getfloat("probe_accel", 0.0, minval=0.0)
         self.offset_samples = config.getint("offset_samples", 3, minval=1)
         self.probe_calibrate_z = 0.0
         self.multi_probe_pending = False
@@ -70,59 +71,78 @@ class AutoZOffsetProbe(probe.PrinterProbe):
             desc=self.cmd_AUTO_Z_PROBE_help,
         )
         self.gcode.register_command(
+            "AUTO_Z_HOME_Z",
+            self.cmd_AUTO_Z_HOME_Z,
+            desc=self.cmd_AUTO_Z_HOME_Z_help,
+        )
+
+        self.gcode.register_command(
+            "AUTO_Z_MEASURE_OFFSET",
+            self.cmd_AUTO_Z_MEASURE_OFFSET,
+            desc=self.cmd_AUTO_Z_MEASURE_OFFSET_help,
+        )
+        self.gcode.register_command(
             "AUTO_Z_CALIBRATE",
             self.cmd_AUTO_Z_CALIBRATE,
             desc=self.cmd_AUTO_Z_CALIBRATE_help,
         )
 
-    def measure_offsets(self, gcmd):
-        # Use bed sensor as endstop
-        self.cmd_AUTO_Z_PROBE(gcmd)
-        gcmd.respond_info("Bed sensor report z=%.6f" % self.last_z_result)
-        toolhead = self.printer.lookup_object("toolhead")
-        toolhead.get_last_move_time()
-        curpos = toolhead.get_position()
-        toolhead.set_position(
-            [curpos[0], curpos[1], self.endstop_position, curpos[3]],
-            homing_axes=(0, 1, 2),
-        )
-
-        # Calculate Z-Offset by probing from new zero
-        self.gcode.run_script_from_command("G0 Z%f" % self.probe_hop)
-        probe = self.printer.lookup_object("probe")
-        probe_pos = probe.run_probe(gcmd)
-        gcmd.respond_info("Probe report z=%.6f" % probe_pos[2])
-        offset = self.last_z_result + probe_pos[2]
-        gcmd.respond_info("Calculated Z-Offset of %.6f" % offset)
-        return neg(self.last_z_result), probe_pos[2], offset
-
-    cmd_AUTO_Z_PROBE_help = "Probe Z-height at current XY position"
+    cmd_AUTO_Z_PROBE_help = (
+        "Probe Z-height at current XY position using the bed sensors"
+    )
 
     def cmd_AUTO_Z_PROBE(self, gcmd):
         self.gcode.run_script_from_command("G0 X120 Y120")
         pos = self.run_probe(gcmd)
-        gcmd.respond_info("Result is z=%.6f" % (pos[2],))
-        self.last_z_result = pos[2]
+        self.last_z_result = neg(pos[2]) + self.z_offset
+        gcmd.respond_info("Result is z=%.6f" % self.last_z_result)
+
+    cmd_AUTO_Z_HOME_Z_help = "Home Z using the bed sensors as an endstop"
+
+    def cmd_AUTO_Z_HOME_Z(self, gcmd):
+        self.gcode.run_script_from_command("G0 X120 Y120")
+        self.lift_probe()
+        self.cmd_AUTO_Z_PROBE(gcmd)
+        toolhead = self.printer.lookup_object("toolhead")
+        toolhead.get_last_move_time()
+        curpos = toolhead.get_position()
+        toolhead.set_position(
+            [curpos[0], curpos[1], self.z_offset, curpos[3]], homing_axes=(0, 1, 2)
+        )
+        self.lift_probe()
+
+    cmd_AUTO_Z_MEASURE_OFFSET_help = (
+        "Z-Offset measured by the inductive probe after AUTO_Z_HOME_Z"
+    )
+
+    def cmd_AUTO_Z_MEASURE_OFFSET(self, gcmd):
+        self.cmd_AUTO_Z_HOME_Z(gcmd)
+        gcmd.respond_info("Bed sensor measured offset: z=%.6f" % self.last_z_result)
+        probe = self.printer.lookup_object("probe")
+        self.gcode.run_script_from_command(
+            "G0 X%f Y%f" % (120 - probe.x_offset, 120 - probe.y_offset)
+        )
+        pos = probe.run_probe(gcmd)
+        gcmd.respond_info("Probe measured offset: z=%.6f" % pos[2])
+        self.lift_probe()
+        return pos[2]
 
     cmd_AUTO_Z_CALIBRATE_help = (
-        "Calculate approximate z-offset using the probe and bed sensors"
+        "Set the Z-Offset by averaging multiple runs of AUTO_Z_MEASURE_OFFSET"
     )
 
     def cmd_AUTO_Z_CALIBRATE(self, gcmd):
-        bed_offset_total = 0.0
-        probe_offset_total = 0.0
-        diff_total = 0.0
+        offset_total = 0.0
         for _ in range(self.offset_samples):
-            bed_offset, probe_offset, diff = self.measure_offsets(gcmd)
-            bed_offset_total += bed_offset
-            probe_offset_total += probe_offset
-            diff_total += diff
-            self.gcode.run_script_from_command("G28 Z")
-        avg_offset = (bed_offset_total + probe_offset_total) / (2 * self.offset_samples)
-        gcmd.respond_info("Final Z-Offset of %.6f" % avg_offset)
+            offset_total += self.cmd_AUTO_Z_MEASURE_OFFSET(gcmd)
+        avg_offset = offset_total / self.offset_samples
+        gcmd.respond_info("Calibrated Z-Offset of %.6f" % avg_offset)
         self.gcode.run_script_from_command(
             "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(avg_offset)
         )
+
+    def lift_probe(self):
+        self.gcode.run_script_from_command("G0 Z%f F600" % self.probe_hop)
 
 
 class AutoZOffsetEndstopWrapper:
