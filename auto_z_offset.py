@@ -86,6 +86,11 @@ class AutoZOffsetProbe(probe.PrinterProbe):
             self.cmd_AUTO_Z_CALIBRATE,
             desc=self.cmd_AUTO_Z_CALIBRATE_help,
         )
+        self.gcode.register_command(
+            "AUTO_Z_LOAD_OFFSET",
+            self.cmd_AUTO_Z_LOAD_OFFSET,
+            desc=self.cmd_AUTO_Z_LOAD_OFFSET_help,
+        )
 
     cmd_AUTO_Z_PROBE_help = (
         "Probe Z-height at current XY position using the bed sensors"
@@ -150,6 +155,16 @@ class AutoZOffsetProbe(probe.PrinterProbe):
             "The SAVE_CONFIG command will update the printer config file\n"
             "with the above and restart the printer."
             % (self.name, self.calibrated_z_offset)
+        )
+
+    cmd_AUTO_Z_LOAD_OFFSET_help = "Apply the calibrated_z_offset set in the config file"
+
+    def cmd_AUTO_Z_LOAD_OFFSET(self, gcmd):
+        gcmd.respond_info(
+            "%s: calibrated_z_offset: %.6f" % (self.name, self.calibrated_z_offset)
+        )
+        self.gcode.run_script_from_command(
+            "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(self.calibrated_z_offset)
         )
 
     def lift_probe(self):
