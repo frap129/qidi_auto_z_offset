@@ -122,13 +122,15 @@ class AutoZOffsetProbe(probe.PrinterProbe):
 
     def cmd_AUTO_Z_MEASURE_OFFSET(self, gcmd):
         self.cmd_AUTO_Z_HOME_Z(gcmd)
-        gcmd.respond_info("Bed sensor measured offset: z=%.6f" % self.last_z_result)
+        gcmd.respond_info(
+            "%s: bed sensor measured offset: z=%.6f" % (self.name, self.last_z_result)
+        )
         probe = self.printer.lookup_object("probe")
         self.gcode.run_script_from_command(
             "G0 X%f Y%f" % (120 - probe.x_offset, 120 - probe.y_offset)
         )
         pos = probe.run_probe(gcmd)
-        gcmd.respond_info("Probe measured offset: z=%.6f" % pos[2])
+        gcmd.respond_info("%s: probe measured offset: z=%.6f" % (self.name, pos[2]))
         self.lift_probe()
         return pos[2]
 
@@ -141,7 +143,6 @@ class AutoZOffsetProbe(probe.PrinterProbe):
         for _ in range(self.offset_samples):
             offset_total += self.cmd_AUTO_Z_MEASURE_OFFSET(gcmd)
         self.calibrated_z_offset = offset_total / self.offset_samples
-        gcmd.respond_info("Calibrated Z-Offset of %.6f" % self.calibrated_z_offset)
         self.gcode.run_script_from_command(
             "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(self.calibrated_z_offset)
         )
