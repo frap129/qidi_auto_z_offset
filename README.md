@@ -19,6 +19,8 @@ ln -s ~/qidi_auto_z_offset/auto_z_offset.py ~/klipper/klippy/extras/auto_z_offse
 **AUTO_Z_HOME_Z**: Home Z using the bed sensors as an endstop
 **AUTO_Z_MEASURE_OFFSET** Z-Offset measured by the inductive probe after AUTO_Z_HOME_Z
 **AUTO_Z_CALIBRATE**: Set the Z-Offset by averaging multiple runs of AUTO_Z_MEASURE_OFFSET
+**AUTO_Z_LOAD_OFFSET**: Set the Z-Offset by averaging multiple runs of AUTO_Z_MEASURE_OFFSET
+**AUTO_Z_SAVE_GCODE_OFFSET**: Save the current gcode offset for z as the new calibrated_z_offset
 
 ### Config Reference
 ```
