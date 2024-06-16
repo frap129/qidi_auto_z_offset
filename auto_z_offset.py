@@ -132,11 +132,11 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
         offset_total = 0.0
         for _ in range(self.offset_samples):
             offset_total += self.cmd_AUTO_Z_MEASURE_OFFSET(gcmd)
-        self.calibrated_z_offset = offset_total / self.offset_samples
+        self.calibrated_z_offset = neg(offset_total / self.offset_samples)
 
         # Apply calibrated offset and save to config
         self.gcode.run_script_from_command(
-            "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(self.calibrated_z_offset)
+            "SET_GCODE_OFFSET Z=%f MOVE=0" % self.calibrated_z_offset
         )
         configfile = self.printer.lookup_object("configfile")
         configfile.set(
@@ -156,7 +156,7 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
             "%s: calibrated_z_offset: %.6f" % (self.name, self.calibrated_z_offset)
         )
         self.gcode.run_script_from_command(
-            "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(self.calibrated_z_offset)
+            "SET_GCODE_OFFSET Z=%f MOVE=0" % self.calibrated_z_offset
         )
 
     cmd_AUTO_Z_SAVE_GCODE_OFFSET_help = (
