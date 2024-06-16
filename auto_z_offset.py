@@ -23,6 +23,7 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
         self.calibrated_z_offset = config.getfloat("calibrated_z_offset", 0.0)
         self.last_state = False
         self.last_z_result = 0.0
+
         # Register commands
         self.gcode = self.printer.lookup_object("gcode")
         self.gcode.register_command(
@@ -56,12 +57,29 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
             desc=self.cmd_AUTO_Z_SAVE_GCODE_OFFSET_help,
         )
 
+    def _move_to_center(self, gcmd):
+        toolhead = self.printer.lookup_object("toolhead")
+        params = self.mcu_probe.get_probe_params(gcmd)
+        curpos = toolhead.get_position()
+        curpos[0] = 120
+        curpos[1] = 120
+        if curpos[2] < 1:
+            curpos[2] = self.probe_hop
+        self._move(curpos, params["lift_speed"])
+
+    def lift_probe(self, gcmd):
+        toolhead = self.printer.lookup_object("toolhead")
+        params = self.mcu_probe.get_probe_params(gcmd)
+        curpos = toolhead.get_position()
+        curpos[2] += self.probe_hop
+        self._move(curpos, params["lift_speed"])
+
     cmd_AUTO_Z_PROBE_help = (
         "Probe Z-height at current XY position using the bed sensors"
     )
 
     def cmd_AUTO_Z_PROBE(self, gcmd):
-        self.gcode.run_script_from_command("G0 X120 Y120")
+        self._move_to_center(gcmd)
         pos = probe.run_single_probe(self.mcu_probe, gcmd)
         self.last_z_result = neg(pos[2]) + self.z_offset
         gcmd.respond_info("Result is z=%.6f" % self.last_z_result)
@@ -69,34 +87,40 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
     cmd_AUTO_Z_HOME_Z_help = "Home Z using the bed sensors as an endstop"
 
     def cmd_AUTO_Z_HOME_Z(self, gcmd):
-        self.gcode.run_script_from_command("G0 X120 Y120")
-        self.lift_probe()
+        self._move_to_center(gcmd)
+        self.lift_probe(gcmd)
         self.cmd_AUTO_Z_PROBE(gcmd)
         toolhead = self.printer.lookup_object("toolhead")
-        toolhead.get_last_move_time()
         curpos = toolhead.get_position()
         toolhead.set_position(
             [curpos[0], curpos[1], self.z_offset, curpos[3]], homing_axes=(0, 1, 2)
         )
-        self.lift_probe()
+        self.lift_probe(gcmd)
 
     cmd_AUTO_Z_MEASURE_OFFSET_help = (
         "Z-Offset measured by the inductive probe after AUTO_Z_HOME_Z"
     )
 
     def cmd_AUTO_Z_MEASURE_OFFSET(self, gcmd):
+        # Use bed sensors to correct z origin
         self.cmd_AUTO_Z_HOME_Z(gcmd)
         gcmd.respond_info(
             "%s: bed sensor measured offset: z=%.6f" % (self.name, self.last_z_result)
         )
+
+        # Account for x/y offset of main probe
         main_probe = self.printer.lookup_object("probe")
-        self.gcode.run_script_from_command(
-            "G0 X%f Y%f"
-            % (120 - main_probe.x_offset, 120 - main_probe.probe_offsets.offsety_offset)
-        )
+        toolhead = self.printer.lookup_object("toolhead")
+        params = self.mcu_probe.get_probe_params(gcmd)
+        curpos = toolhead.get_position()
+        curpos[0] = 120 - main_probe.x_offset
+        curpos[1] = 120 - main_probe.y_offset
+        self._move(curpos, params)
+
+        # Use main probe to measure its own offset
         pos = probe.run_single_probe(main_probe, gcmd)
         gcmd.respond_info("%s: probe measured offset: z=%.6f" % (self.name, pos[2]))
-        self.lift_probe()
+        self.lift_probe(gcmd)
         return pos[2]
 
     cmd_AUTO_Z_CALIBRATE_help = (
@@ -104,14 +128,16 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
     )
 
     def cmd_AUTO_Z_CALIBRATE(self, gcmd):
+        # Get average measured offset over self.offset_samples number of tests
         offset_total = 0.0
         for _ in range(self.offset_samples):
             offset_total += self.cmd_AUTO_Z_MEASURE_OFFSET(gcmd)
         self.calibrated_z_offset = offset_total / self.offset_samples
+
+        # Apply calibrated offset and save to config
         self.gcode.run_script_from_command(
             "SET_GCODE_OFFSET Z=%f MOVE=0" % neg(self.calibrated_z_offset)
         )
-
         configfile = self.printer.lookup_object("configfile")
         configfile.set(
             self.name, "calibrated_z_offset", "%.6f" % self.calibrated_z_offset
@@ -151,12 +177,8 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
             % (self.name, self.calibrated_z_offset)
         )
 
-    def lift_probe(self):
-        self.gcode.run_script_from_command("G0 Z%f F600" % self.probe_hop)
 
-        # Homing via auto_z_offset:z_virtual_endstop
-
-
+# Homing via auto_z_offset:z_virtual_endstop
 class HomingViaAutoZHelper(probe.HomingViaProbeHelper):
     def __init__(self, config, mcu_probe):
         self.printer = config.get_printer()
