@@ -149,7 +149,9 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
             % (self.name, self.calibrated_z_offset)
         )
 
-    cmd_AUTO_Z_LOAD_OFFSET_help = "Apply the calibrated_z_offset set in the config file"
+    cmd_AUTO_Z_LOAD_OFFSET_help = (
+        "Apply the calibrated_z_offset saved in the config file"
+    )
 
     def cmd_AUTO_Z_LOAD_OFFSET(self, gcmd):
         gcmd.respond_info(
