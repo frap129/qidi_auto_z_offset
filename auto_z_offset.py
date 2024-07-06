@@ -271,7 +271,7 @@ class AutoZOffsetSessionHelper(probe.ProbeSessionHelper):
         self.speed = config.getfloat("speed", 5.0, above=0.0)
         self.lift_speed = config.getfloat("lift_speed", self.speed, above=0.0)
         # Multi-sample support (for improved accuracy)
-        self.sample_count = config.getint("samples", 1, minval=1)
+        self.sample_count = config.getint("samples", 5, minval=5)
         self.sample_retract_dist = config.getfloat(
             "sample_retract_dist", 2.0, above=0.0
         )
@@ -285,6 +285,40 @@ class AutoZOffsetSessionHelper(probe.ProbeSessionHelper):
         self.printer.register_event_handler(
             "gcode:command_error", self._handle_command_error
         )
+
+    def run_probe(self, gcmd):
+        if not self.multi_probe_pending:
+            self._probe_state_error()
+        params = self.get_probe_params(gcmd)
+        toolhead = self.printer.lookup_object("toolhead")
+        probexy = toolhead.get_position()[:2]
+        retries = 0
+        positions = []
+        sample_count = params["samples"]
+        while len(positions) < sample_count:
+            # Probe position
+            pos = self._probe(params["probe_speed"])
+            positions.append(pos)
+            # Check samples tolerance
+            z_positions = [p[2] for p in positions]
+            if max(z_positions) - min(z_positions) > params["samples_tolerance"]:
+                if retries >= params["samples_tolerance_retries"]:
+                    raise gcmd.error("Probe samples exceed samples_tolerance")
+                gcmd.respond_info("Probe samples exceed tolerance. Retrying...")
+                retries += 1
+                positions = []
+            # Retract
+            if len(positions) < sample_count:
+                toolhead.manual_move(
+                    probexy + [pos[2] + params["sample_retract_dist"]],
+                    params["lift_speed"],
+                )
+        # Discard highest and lowest values
+        positions.remove(max(positions))
+        positions.remove(min(positions))
+        # Calculate result
+        epos = probe.calc_probe_z_average(positions, params["samples_result"])
+        self.results.append(epos)
 
 
 class AutoZOffsetProbeOffsetsHelper:
