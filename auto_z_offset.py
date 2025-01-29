@@ -271,7 +271,7 @@ class AutoZOffsetSessionHelper(probe.ProbeSessionHelper):
         self.speed = config.getfloat("speed", 5.0, above=0.0)
         self.lift_speed = config.getfloat("lift_speed", self.speed, above=0.0)
         # Multi-sample support (for improved accuracy)
-        self.sample_count = config.getint("samples", 5, minval=5)
+        self.sample_count = config.getint("samples", 5, minval=3)
         self.sample_retract_dist = config.getfloat(
             "sample_retract_dist", 2.0, above=0.0
         )
