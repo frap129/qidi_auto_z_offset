@@ -272,6 +272,7 @@ class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
 class AutoZOffsetSessionHelper(probe.ProbeSessionHelper):
     def __init__(self, config, param_helper, start_session_cb):
         self.printer = config.get_printer()
+        self.probe_z_offset = self.printer.lookup_object("probe").get_offsets()[2]
         self.param_helper = param_helper
         self.start_session_cb = start_session_cb
         # Session state
@@ -312,6 +313,8 @@ class AutoZOffsetSessionHelper(probe.ProbeSessionHelper):
         # Discard highest and lowest values
         positions.remove(max(positions))
         positions.remove(min(positions))
+        # Subtract probe z_offset
+        positions = [(x, y, z - self.probe_z_offset) for x, y, z in positions]
         # Calculate result
         epos = probe.calc_probe_z_average(positions, params["samples_result"])
         self.results.append(epos)
