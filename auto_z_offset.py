@@ -115,7 +115,7 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
         curpos = toolhead.get_position()
         curpos[0] = 120 - main_probe.probe_offsets.x_offset
         curpos[1] = 120 - main_probe.probe_offsets.y_offset
-        self._move(curpos, params["speed"])
+        self._move(curpos, params["lift_speed"])
 
         # Use main probe to measure its own offset
         pos = probe.run_single_probe(main_probe, gcmd)
