@@ -9,6 +9,7 @@
 from operator import neg
 
 from . import probe
+from . import manual_probe
 
 
 class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
@@ -26,6 +27,8 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
 
         # Register commands
         self.gcode = self.printer.lookup_object("gcode")
+        self.last_probe_position = self.gcode.Coord((0., 0., 0.))
+
         self.gcode.register_command(
             "AUTO_Z_PROBE",
             self.cmd_AUTO_Z_PROBE,
@@ -82,6 +85,7 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
         self._move_to_center(gcmd)
         pos = probe.run_single_probe(self.mcu_probe, gcmd)
         self.last_z_result = neg(pos[2]) + self.z_offset
+        self.last_probe_position = self.gcode.Coord((pos[0], pos[1], pos[2]))
         gcmd.respond_info("Result is z=%.6f" % self.last_z_result)
 
     cmd_AUTO_Z_HOME_Z_help = "Home Z using the bed sensors as an endstop"
@@ -187,6 +191,7 @@ class HomingViaAutoZHelper(probe.HomingViaProbeHelper):
         self.mcu_probe = mcu_probe
         self.param_helper = param_helper
         self.multi_probe_pending = False
+        self.probe_offsets = AutoZOffsetOffsetsHelper(config)
         self.z_min_position = probe.lookup_minimum_z(config)
         self.results = []
         probe.LookupZSteppers(config, self.mcu_probe.add_stepper)
@@ -321,6 +326,10 @@ class AutoZOffsetOffsetsHelper:
     def get_offsets(self):
         return 0.0, 0.0, self.z_offset
 
+    def create_probe_result(self, test_pos):
+        return manual_probe.ProbeResult(
+            test_pos[0]+self.x_offset, test_pos[1]+self.y_offset,
+            test_pos[2]-self.z_offset, test_pos[0], test_pos[1], test_pos[2])
 
 class AutoZOffsetProbe:
     def __init__(self, config):
