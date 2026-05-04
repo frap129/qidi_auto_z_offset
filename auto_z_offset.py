@@ -27,7 +27,7 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
 
         # Register commands
         self.gcode = self.printer.lookup_object("gcode")
-        self.last_probe_position = self.gcode.Coord((0., 0., 0.))
+        self.last_probe_position = gcode.Coord(0., 0., 0., 0.)
 
         self.gcode.register_command(
             "AUTO_Z_PROBE",
