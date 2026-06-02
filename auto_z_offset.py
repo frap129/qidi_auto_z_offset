@@ -13,13 +13,6 @@ from . import probe
 
 class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
     def __init__(self, config, probe, query_endstop=None):
-        # Note: parameter renamed from mcu_probe to probe to match the
-        # upstream ProbeCommandHelper.__init__ signature
-        # (config, probe, query_endstop=None, can_set_z_offset=True).
-        # We do NOT call super().__init__() because the parent's
-        # QUERY_PROBE/PROBE/PROBE_CALIBRATE/PROBE_ACCURACY/Z_OFFSET_APPLY_PROBE
-        # commands are not part of the plugin's surface. We inherit only
-        # _move() and get_status() helpers.
         self.printer = config.get_printer()
         self.name = config.get_name()
         self.mcu_probe = probe
@@ -196,19 +189,12 @@ class AutoZOffsetEndstopWrapper(probe.ProbeEndstopWrapper):
         self.gcode = self.printer.lookup_object("gcode")
         self.probe_accel = config.getfloat("probe_accel", 0.0, minval=0.0)
         self.old_max_accel = 0.0
-        # Setup prepare_gcode
         gcode_macro = self.printer.load_object(config, "gcode_macro")
         self.prepare_gcode = gcode_macro.load_template(config, "prepare_gcode")
-        # Defer the rest of the wiring (mcu_endstop, multi) to the upstream
-        # constructor. (The upstream also creates a homing_helper, but the
-        # plugin does not use it — homing is done via AUTO_Z_HOME_Z gcode.)
         super().__init__(config, probe_offsets, param_helper)
         self.query_endstop = self.mcu_endstop.query_endstop
 
     def start_probe_session(self, gcmd):
-        # Run the user's prepare_gcode before the upstream session begins
-        # activating/deactivating the probe. The upstream call returns self
-        # which we also return so the session helper can chain off it.
         self.gcode.run_script_from_command(self.prepare_gcode.render())
         return super().start_probe_session(gcmd)
 
@@ -229,10 +215,6 @@ class AutoZOffsetEndstopWrapper(probe.ProbeEndstopWrapper):
 
 class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
     def __init__(self, config):
-        # Read every config option the parent would read, but override
-        # 'samples' to default to 5 (min 3). The discard-highest/lowest
-        # behavior in AutoZOffsetSessionHelper.run_probe is a no-op with
-        # fewer than 3 samples, so we force a sensible minimum.
         gcode = config.get_printer().lookup_object("gcode")
         self.dummy_gcode_cmd = gcode.create_gcode_command("", "", {})
         self.speed = config.getfloat("speed", 5.0, above=0.0)
@@ -249,10 +231,6 @@ class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
 
 class AutoZOffsetOffsetsHelper(probe.ProbeOffsetsHelper):
     def __init__(self, config):
-        # Read offsets with default 0.0 (upstream ProbeOffsetsHelper requires
-        # z_offset with no default, but for [auto_z_offset] 0.0 is reasonable
-        # — the sensor is assumed to trigger at the same z-height as the
-        # nozzle by default).
         self.x_offset = config.getfloat("x_offset", 0.0)
         self.y_offset = config.getfloat("y_offset", 0.0)
         self.z_offset = config.getfloat("z_offset", 0.0)
@@ -261,21 +239,10 @@ class AutoZOffsetOffsetsHelper(probe.ProbeOffsetsHelper):
 class AutoZOffsetSessionHelper(probe.SampleAveragingHelper):
     def __init__(self, config, param_helper, start_session_cb):
         self.printer = config.get_printer()
-        # Cache the main probe's z_offset so per-sample z values reflect the
-        # nozzle-vs-inductive-probe offset the user has configured.
         self.probe_z_offset = self.printer.lookup_object("probe").get_offsets()[2]
-        # Initialize upstream session state (hw_probe_session, results,
-        # command_error handler) via the renamed base class.
         super().__init__(config, param_helper, start_session_cb)
 
     def _adjusted_z(self, pos):
-        # Return the value the discard/tolerance logic should compare on:
-        # the wrapper's reported contact z (bed_z = test_z - auto_z_offset_z_offset)
-        # minus the main [probe] section's z_offset. This is exactly the
-        # value the pre-fix plugin computed via
-        #     positions = [(x, y, z - self.probe_z_offset) for x, y, z in positions]
-        # on the ProbeResult's bed_z field, so the tolerance check and the
-        # discard sort operate on the same numbers as before.
         return pos.bed_z - self.probe_z_offset
 
     def run_probe(self, gcmd):
