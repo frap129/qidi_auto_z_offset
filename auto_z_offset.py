@@ -337,26 +337,6 @@ class AutoZOffsetSessionHelper(probe.SampleAveragingHelper):
         self.results.append(epos)
 
 
-class AutoZOffsetOffsetsHelper:
-    def __init__(self, config):
-        self.x_offset = 0.0
-        self.y_offset = 0.0
-        self.z_offset = config.getfloat("z_offset", 0.0)
-
-    def get_offsets(self):
-        return 0.0, 0.0, self.z_offset
-
-    def create_probe_result(self, test_pos):
-        return manual_probe.ProbeResult(
-            test_pos[0] + self.x_offset,
-            test_pos[1] + self.y_offset,
-            test_pos[2] - self.z_offset,
-            test_pos[0],
-            test_pos[1],
-            test_pos[2],
-        )
-
-
 class AutoZOffsetProbe:
     def __init__(self, config):
         self.printer = config.get_printer()
