@@ -58,6 +58,7 @@ FORBIDDEN_PATTERNS = [
 REQUIRED_SYMBOLS = [
     "probe.SampleAveragingHelper",
     "probe.ProbeOffsetsHelper",
+    "probe.ProbeParameterHelper",
     "probe.ProbeEndstopWrapper",
     "start_probe_session",
 ]
@@ -66,7 +67,7 @@ REQUIRED_SYMBOLS = [
 def main() -> int:
     src = TARGET.read_text()
     try:
-        ast.parse(src)
+        tree = ast.parse(src)
     except SyntaxError as e:
         print(f"FAIL: {TARGET} does not parse: {e}")
         return 1
@@ -80,7 +81,6 @@ def main() -> int:
             failures.append(f"required symbol missing: {sym!r}")
 
     # The wrapper class must extend probe.ProbeEndstopWrapper and pass 3 args.
-    tree = ast.parse(src)
     wrapper_init = None
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "AutoZOffsetEndstopWrapper":
