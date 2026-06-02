@@ -9,7 +9,6 @@
 from operator import neg
 
 from . import probe
-from . import manual_probe
 
 
 class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
@@ -91,8 +90,8 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
     def cmd_AUTO_Z_PROBE(self, gcmd):
         self._move_to_center(gcmd)
         pos = probe.run_single_probe(self.mcu_probe, gcmd)
-        self.last_z_result = neg(pos[2]) + self.z_offset
-        self.last_probe_position = self.gcode.Coord((pos[0], pos[1], pos[2]))
+        self.last_z_result = neg(pos.bed_z) + self.z_offset
+        self.last_probe_position = self.gcode.Coord((pos.bed_x, pos.bed_y, pos.bed_z))
         gcmd.respond_info("Result is z=%.6f" % self.last_z_result)
 
     cmd_AUTO_Z_HOME_Z_help = "Home Z using the bed sensors as an endstop"
@@ -130,9 +129,9 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
 
         # Use main probe to measure its own offset
         pos = probe.run_single_probe(main_probe, gcmd)
-        gcmd.respond_info("%s: probe measured offset: z=%.6f" % (self.name, pos[2]))
+        gcmd.respond_info("%s: probe measured offset: z=%.6f" % (self.name, pos.bed_z))
         self.lift_probe(gcmd)
-        return pos[2]
+        return pos.bed_z
 
     cmd_AUTO_Z_CALIBRATE_help = (
         "Set the Z-Offset by averaging multiple runs of AUTO_Z_MEASURE_OFFSET"
@@ -200,8 +199,9 @@ class AutoZOffsetEndstopWrapper(probe.ProbeEndstopWrapper):
         # Setup prepare_gcode
         gcode_macro = self.printer.load_object(config, "gcode_macro")
         self.prepare_gcode = gcode_macro.load_template(config, "prepare_gcode")
-        # Defer the rest of the wiring (mcu_endstop, homing_helper, multi)
-        # to the upstream constructor.
+        # Defer the rest of the wiring (mcu_endstop, multi) to the upstream
+        # constructor. (The upstream also creates a homing_helper, but the
+        # plugin does not use it — homing is done via AUTO_Z_HOME_Z gcode.)
         super().__init__(config, probe_offsets, param_helper)
         self.query_endstop = self.mcu_endstop.query_endstop
 
@@ -245,6 +245,17 @@ class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
         self.samples_result = config.getchoice("samples_result", atypes, "average")
         self.samples_tolerance = config.getfloat("samples_tolerance", 0.100, minval=0.0)
         self.samples_retries = config.getint("samples_tolerance_retries", 0, minval=0)
+
+
+class AutoZOffsetOffsetsHelper(probe.ProbeOffsetsHelper):
+    def __init__(self, config):
+        # Read offsets with default 0.0 (upstream ProbeOffsetsHelper requires
+        # z_offset with no default, but for [auto_z_offset] 0.0 is reasonable
+        # — the sensor is assumed to trigger at the same z-height as the
+        # nozzle by default).
+        self.x_offset = config.getfloat("x_offset", 0.0)
+        self.y_offset = config.getfloat("y_offset", 0.0)
+        self.z_offset = config.getfloat("z_offset", 0.0)
 
 
 class AutoZOffsetSessionHelper(probe.SampleAveragingHelper):
@@ -315,18 +326,17 @@ class AutoZOffsetProbe:
         self.mcu_probe = AutoZOffsetEndstopWrapper(
             config, self.probe_offsets, self.param_helper
         )
-        self.cmd_helper = AutoZOffsetCommandHelper(
-            config, self, self.mcu_probe.query_endstop
-        )
         self.probe_session = AutoZOffsetSessionHelper(
             config, self.param_helper, self.mcu_probe.start_probe_session
         )
+        query_endstop = self.mcu_probe.query_endstop
+        self.cmd_helper = AutoZOffsetCommandHelper(config, self, query_endstop)
 
     def get_probe_params(self, gcmd=None):
         return self.param_helper.get_probe_params(gcmd)
 
-    def get_offsets(self):
-        return self.probe_offsets.get_offsets()
+    def get_offsets(self, gcmd=None):
+        return self.probe_offsets.get_offsets(gcmd)
 
     def get_status(self, eventtime):
         return self.cmd_helper.get_status(eventtime)
