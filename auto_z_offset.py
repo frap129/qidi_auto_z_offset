@@ -221,41 +221,40 @@ class HomingViaAutoZHelper(probe.HomingViaProbeHelper):
         )
 
 
-class AutoZOffsetEndstopWrapper:
-    def __init__(self, config):
+class AutoZOffsetEndstopWrapper(probe.ProbeEndstopWrapper):
+    def __init__(self, config, probe_offsets, param_helper):
         self.printer = config.get_printer()
         self.gcode = self.printer.lookup_object("gcode")
         self.probe_accel = config.getfloat("probe_accel", 0.0, minval=0.0)
-        self.probe_wrapper = probe.ProbeEndstopWrapper(config)
+        self.old_max_accel = 0.0
         # Setup prepare_gcode
         gcode_macro = self.printer.load_object(config, "gcode_macro")
         self.prepare_gcode = gcode_macro.load_template(config, "prepare_gcode")
-        # Wrappers
-        self.get_mcu = self.probe_wrapper.get_mcu
-        self.add_stepper = self.probe_wrapper.add_stepper
-        self.get_steppers = self.probe_wrapper.get_steppers
-        self.home_start = self.probe_wrapper.home_start
-        self.home_wait = self.probe_wrapper.home_wait
-        self.query_endstop = self.probe_wrapper.query_endstop
-        self.multi_probe_end = self.probe_wrapper.multi_probe_end
+        # Defer the rest of the wiring (mcu_endstop, homing_helper, multi)
+        # to the upstream constructor.
+        super().__init__(config, probe_offsets, param_helper)
+        self.query_endstop = self.mcu_endstop.query_endstop
 
-    def multi_probe_begin(self):
+    def start_probe_session(self, gcmd):
+        # Run the user's prepare_gcode before the upstream session begins
+        # activating/deactivating the probe. The upstream call returns self
+        # which we also return so the session helper can chain off it.
         self.gcode.run_script_from_command(self.prepare_gcode.render())
-        self.probe_wrapper.multi_probe_begin()
+        return super().start_probe_session(gcmd)
 
-    def probe_prepare(self, hmove):
-        toolhead = self.printer.lookup_object("toolhead")
-        self.probe_wrapper.probe_prepare(hmove)
+    def _probe_prepare(self):
+        super()._probe_prepare()
         if self.probe_accel > 0.0:
             systime = self.printer.get_reactor().monotonic()
+            toolhead = self.printer.lookup_object("toolhead")
             toolhead_info = toolhead.get_status(systime)
             self.old_max_accel = toolhead_info["max_accel"]
             self.gcode.run_script_from_command("M204 S%.3f" % self.probe_accel)
 
-    def probe_finish(self, hmove):
+    def _probe_finish(self):
         if self.probe_accel > 0.0:
             self.gcode.run_script_from_command("M204 S%.3f" % self.old_max_accel)
-        self.probe_wrapper.probe_finish(hmove)
+        super()._probe_finish()
 
 
 class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
@@ -276,19 +275,25 @@ class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
         self.samples_retries = config.getint("samples_tolerance_retries", 0, minval=0)
 
 
-class AutoZOffsetSessionHelper(probe.ProbeSessionHelper):
+class AutoZOffsetSessionHelper(probe.SampleAveragingHelper):
     def __init__(self, config, param_helper, start_session_cb):
         self.printer = config.get_printer()
+        # Cache the main probe's z_offset so per-sample z values reflect the
+        # nozzle-vs-inductive-probe offset the user has configured.
         self.probe_z_offset = self.printer.lookup_object("probe").get_offsets()[2]
-        self.param_helper = param_helper
-        self.start_session_cb = start_session_cb
-        # Session state
-        self.hw_probe_session = None
-        self.results = []
-        # Register event handlers
-        self.printer.register_event_handler(
-            "gcode:command_error", self._handle_command_error
-        )
+        # Initialize upstream session state (hw_probe_session, results,
+        # command_error handler) via the renamed base class.
+        super().__init__(config, param_helper, start_session_cb)
+
+    def _adjusted_z(self, pos):
+        # Return the value the discard/tolerance logic should compare on:
+        # the wrapper's reported contact z (bed_z = test_z - auto_z_offset_z_offset)
+        # minus the main [probe] section's z_offset. This is exactly the
+        # value the pre-fix plugin computed via
+        #     positions = [(x, y, z - self.probe_z_offset) for x, y, z in positions]
+        # on the ProbeResult's bed_z field, so the tolerance check and the
+        # discard sort operate on the same numbers as before.
+        return pos.bed_z - self.probe_z_offset
 
     def run_probe(self, gcmd):
         if self.hw_probe_session is None:
@@ -300,29 +305,32 @@ class AutoZOffsetSessionHelper(probe.ProbeSessionHelper):
         positions = []
         sample_count = params["samples"]
         while len(positions) < sample_count:
-            # Probe position
+            # Probe position (returns a manual_probe.ProbeResult namedtuple).
             pos = self._probe(gcmd)
             positions.append(pos)
-            # Check samples tolerance
-            z_positions = [p[2] for p in positions]
+            # Check samples tolerance using the adjusted contact z.
+            z_positions = [self._adjusted_z(p) for p in positions]
             if max(z_positions) - min(z_positions) > params["samples_tolerance"]:
                 if retries >= params["samples_tolerance_retries"]:
                     raise gcmd.error("Probe samples exceed samples_tolerance")
                 gcmd.respond_info("Probe samples exceed tolerance. Retrying...")
                 retries += 1
                 positions = []
-            # Retract
+            # Retract (use current z, not the probe's reported z, matching
+            # upstream SampleAveragingHelper.run_probe).
             if len(positions) < sample_count:
+                cur_z = toolhead.get_position()[2]
                 toolhead.manual_move(
-                    probexy + [pos[2] + params["sample_retract_dist"]],
+                    probexy + [cur_z + params["sample_retract_dist"]],
                     params["lift_speed"],
                 )
-        # Discard highest and lowest values
-        positions.remove(max(positions))
-        positions.remove(min(positions))
-        # Subtract probe z_offset
-        positions = [(x, y, z - self.probe_z_offset) for x, y, z in positions]
-        # Calculate result
+        # Discard highest and lowest samples to reduce noise from the
+        # qidi piezo bed sensor (only meaningful when we have at least 3).
+        if len(positions) >= 3:
+            positions.sort(key=self._adjusted_z)
+            positions = positions[1:-1]
+        # Calculate result over the remaining samples. calc_probe_z_average
+        # averages all fields of the ProbeResult namedtuple.
         epos = probe.calc_probe_z_average(positions, params["samples_result"])
         self.results.append(epos)
 
@@ -350,17 +358,19 @@ class AutoZOffsetOffsetsHelper:
 class AutoZOffsetProbe:
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.mcu_probe = AutoZOffsetEndstopWrapper(config)
+        self.probe_offsets = AutoZOffsetOffsetsHelper(config)
+        self.param_helper = AutoZOffsetParameterHelper(config)
+        self.mcu_probe = AutoZOffsetEndstopWrapper(
+            config, self.probe_offsets, self.param_helper
+        )
         self.cmd_helper = AutoZOffsetCommandHelper(
             config, self, self.mcu_probe.query_endstop
         )
-        self.probe_offsets = AutoZOffsetOffsetsHelper(config)
-        self.param_helper = AutoZOffsetParameterHelper(config)
         self.homing_helper = HomingViaAutoZHelper(
             config, self.mcu_probe, self.param_helper
         )
         self.probe_session = AutoZOffsetSessionHelper(
-            config, self.param_helper, self.homing_helper.start_probe_session
+            config, self.param_helper, self.mcu_probe.start_probe_session
         )
 
     def get_probe_params(self, gcmd=None):
