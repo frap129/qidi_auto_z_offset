@@ -13,10 +13,17 @@ from . import manual_probe
 
 
 class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
-    def __init__(self, config, mcu_probe, query_endstop=None):
+    def __init__(self, config, probe, query_endstop=None):
+        # Note: parameter renamed from mcu_probe to probe to match the
+        # upstream ProbeCommandHelper.__init__ signature
+        # (config, probe, query_endstop=None, can_set_z_offset=True).
+        # We do NOT call super().__init__() because the parent's
+        # QUERY_PROBE/PROBE/PROBE_CALIBRATE/PROBE_ACCURACY/Z_OFFSET_APPLY_PROBE
+        # commands are not part of the plugin's surface. We inherit only
+        # _move() and get_status() helpers.
         self.printer = config.get_printer()
         self.name = config.get_name()
-        self.mcu_probe = mcu_probe
+        self.mcu_probe = probe
         self.query_endstop = query_endstop
         self.z_offset = config.getfloat("z_offset", -0.1)
         self.probe_hop = config.getfloat("probe_hop", 5.0, minval=4.0)
@@ -27,7 +34,7 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
 
         # Register commands
         self.gcode = self.printer.lookup_object("gcode")
-        self.last_probe_position = self.gcode.Coord((0., 0., 0.))
+        self.last_probe_position = self.gcode.Coord((0.0, 0.0, 0.0))
 
         self.gcode.register_command(
             "AUTO_Z_PROBE",
@@ -331,8 +338,14 @@ class AutoZOffsetOffsetsHelper:
 
     def create_probe_result(self, test_pos):
         return manual_probe.ProbeResult(
-            test_pos[0]+self.x_offset, test_pos[1]+self.y_offset,
-            test_pos[2]-self.z_offset, test_pos[0], test_pos[1], test_pos[2])
+            test_pos[0] + self.x_offset,
+            test_pos[1] + self.y_offset,
+            test_pos[2] - self.z_offset,
+            test_pos[0],
+            test_pos[1],
+            test_pos[2],
+        )
+
 
 class AutoZOffsetProbe:
     def __init__(self, config):
