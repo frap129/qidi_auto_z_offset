@@ -259,12 +259,14 @@ class AutoZOffsetEndstopWrapper(probe.ProbeEndstopWrapper):
 
 class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
     def __init__(self, config):
+        # Read every config option the parent would read, but override
+        # 'samples' to default to 5 (min 3). The discard-highest/lowest
+        # behavior in AutoZOffsetSessionHelper.run_probe is a no-op with
+        # fewer than 3 samples, so we force a sensible minimum.
         gcode = config.get_printer().lookup_object("gcode")
         self.dummy_gcode_cmd = gcode.create_gcode_command("", "", {})
-        # Configurable probing speeds
         self.speed = config.getfloat("speed", 5.0, above=0.0)
         self.lift_speed = config.getfloat("lift_speed", self.speed, above=0.0)
-        # Multi-sample support (for improved accuracy)
         self.sample_count = config.getint("samples", 5, minval=3)
         self.sample_retract_dist = config.getfloat(
             "sample_retract_dist", 2.0, above=0.0
