@@ -191,36 +191,6 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
         )
 
 
-# Homing via auto_z_offset:z_virtual_endstop
-class HomingViaAutoZHelper(probe.HomingViaProbeHelper):
-    def __init__(self, config, mcu_probe, param_helper):
-        self.printer = config.get_printer()
-        self.mcu_probe = mcu_probe
-        self.param_helper = param_helper
-        self.multi_probe_pending = False
-        self.probe_offsets = AutoZOffsetOffsetsHelper(config)
-        self.z_min_position = probe.lookup_minimum_z(config)
-        self.results = []
-        probe.LookupZSteppers(config, self.mcu_probe.add_stepper)
-        # Register z_virtual_endstop pin
-        self.printer.lookup_object("pins").register_chip("auto_z_offset", self)
-        self.printer.register_event_handler(
-            "homing:homing_move_begin", self._handle_homing_move_begin
-        )
-        self.printer.register_event_handler(
-            "homing:homing_move_end", self._handle_homing_move_end
-        )
-        self.printer.register_event_handler(
-            "homing:home_rails_begin", self._handle_home_rails_begin
-        )
-        self.printer.register_event_handler(
-            "homing:home_rails_end", self._handle_home_rails_end
-        )
-        self.printer.register_event_handler(
-            "gcode:command_error", self._handle_command_error
-        )
-
-
 class AutoZOffsetEndstopWrapper(probe.ProbeEndstopWrapper):
     def __init__(self, config, probe_offsets, param_helper):
         self.printer = config.get_printer()
@@ -347,9 +317,6 @@ class AutoZOffsetProbe:
         )
         self.cmd_helper = AutoZOffsetCommandHelper(
             config, self, self.mcu_probe.query_endstop
-        )
-        self.homing_helper = HomingViaAutoZHelper(
-            config, self.mcu_probe, self.param_helper
         )
         self.probe_session = AutoZOffsetSessionHelper(
             config, self.param_helper, self.mcu_probe.start_probe_session
