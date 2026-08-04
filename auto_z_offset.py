@@ -217,7 +217,7 @@ class AutoZOffsetParameterHelper(probe.ProbeParameterHelper):
     def __init__(self, config):
         gcode = config.get_printer().lookup_object("gcode")
         self.dummy_gcode_cmd = gcode.create_gcode_command("", "", {})
-        self.speed = config.getfloat("speed", 5.0, above=0.0)
+        self.speed = config.getfloat("speed", 13.0, above=0.0)
         self.lift_speed = config.getfloat("lift_speed", self.speed, above=0.0)
         self.sample_count = config.getint("samples", 5, minval=3)
         self.sample_retract_dist = config.getfloat(
