@@ -32,11 +32,6 @@ ln -s ~/qidi_auto_z_offset/auto_z_offset.py ~/klipper/klippy/extras/auto_z_offse
 `auto_z_offset` helps calibrate the z_offset of the inductive probe on the Q1 using the piezo electric sensors under the bed.
 It allows for finetuning, saving, and loading the calibrated offset.
 
-⚠️ **NOTE** ⚠️
-`AUTO_Z_CALIBRATE` should not be used in a `PRINT_START` macro! On rare occasion, the bed sensors can fail to trigger or
-trigger too late. If this happens when a print is started, you can end up grinding the nozzle into the bed. Instead, you
-should calibrate it prior to your first print, and load the offset in `PRINT_START`.
-
 First, calibrate the z_offset:
 
 1. Heat the extruder to a reasonable temperature that wont ooze (160+)
