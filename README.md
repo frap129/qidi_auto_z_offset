@@ -90,14 +90,16 @@ This example config also includes the control pin for the bed sensors and the co
 ```
 [output_pin bed_sensor]
 pin: !U_1:PA14
-value:0
+pwm: false
+shutdown_value: 1
+value: 1
 
 [probe]
 pin: !gpio21
 x_offset: 17.6
 y_offset: 4.4
 z_offset: 0.0
-speed:10
+speed:13
 samples: 3
 samples_result: average
 sample_retract_dist: 4.0
@@ -107,7 +109,7 @@ samples_tolerance_retries: 5
 [auto_z_offset]
 pin: U_1:PC1
 z_offset: -0.1
-speed: 10
+speed: 13
 probe_accel: 50
 samples: 5
 samples_result: average
