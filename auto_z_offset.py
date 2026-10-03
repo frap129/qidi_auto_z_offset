@@ -96,7 +96,7 @@ class AutoZOffsetCommandHelper(probe.ProbeCommandHelper):
         toolhead = self.printer.lookup_object("toolhead")
         curpos = toolhead.get_position()
         toolhead.set_position(
-            [curpos[0], curpos[1], self.z_offset, curpos[3]], homing_axes=(0, 1, 2)
+            [curpos[0], curpos[1], self.z_offset, curpos[3]], homing_axes="xyz"
         )
         self.lift_probe(gcmd)
 
